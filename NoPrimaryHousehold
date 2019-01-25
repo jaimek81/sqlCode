@@ -1,0 +1,34 @@
+/* Identify active students w/o a primary household */
+
+SELECT p.personID, p.studentNumber, i.lastName, i.firstName,s.comments, cal.name, e.grade, phh.name, e.startComments
+
+FROM
+	dbo.[Identity] AS i WITH (NOLOCK)
+	INNER JOIN dbo.Person AS p WITH (NOLOCK) ON i.identityID = p.currentIdentityID
+	INNER JOIN dbo.Enrollment AS e WITH (NOLOCK) ON p.personID = e.personID and e.serviceType = 'P' -- will only pull students with Primary Enrollment
+		AND DATEDIFF(dd,GETDATE(),ISNULL(e.startDate,'01/01/1901')) <= 0			-- will only pull students whose enrollment started on or after today
+		AND DATEDIFF(dd,GETDATE(),ISNULL(e.endDate,'12/31/2050')) >= 0				-- will only pull students whose enrollment end on or after today
+	INNER JOIN dbo.Calendar AS cal WITH (NOLOCK) ON e.calendarID = cal.calendarID
+		AND cal.endYear = (
+			SELECT endYear
+			FROM dbo.SchoolYear WITH (NOLOCK)
+			WHERE active = 1)				-- will pull the active school year if you need to look at next year add +1 after the parentacies
+	INNER JOIN dbo.School AS s WITH (NOLOCK) ON cal.schoolID = s.schoolID
+
+	LEFT OUTER JOIN (
+		SELECT DISTINCT 
+			hh.householdID,
+			hm.personID,
+			hh.name
+
+		FROM
+			dbo.Household AS hh WITH (NOLOCK)
+			INNER JOIN dbo.HouseholdMember AS hm WITH (NOLOCK) ON hh.householdID = hm.householdID
+				AND ISNULL(hm.[secondary],0) = 0		-- Looking only at primary members of households
+				AND DATEDIFF(dd,GETDATE(),ISNULL(hm.startDate,'01/01/1901')) <= 0		-- looking only at members whose membership started on or before today
+				AND DATEDIFF(dd,GETDATE(),ISNULL(hm.endDate,'12/31/2050')) >= 0			-- looking only at members whose membership ended on or after today
+		WHERE
+			1=1 ) AS phh ON p.personID = phh.personID
+WHERE
+	1=1
+AND phh.householdID IS NULL
